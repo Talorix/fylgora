@@ -61,7 +61,7 @@ router.get("/fs/:idt/files", async (req: Request, res: Response) => {
   const relPath = (req.query.path as string) || "/";
 
   try {
-    const dirPath = resolvePath(idt, relPath);
+    const dirPath = resolvePath(idt as string, relPath);
     const items = await fsPromises.readdir(dirPath, { withFileTypes: true });
 
     const result = await Promise.all(
@@ -99,7 +99,7 @@ router.get("/fs/:idt/files", async (req: Request, res: Response) => {
 router.get("/fs/:idt/size", async (req: Request, res: Response) => {
   const { idt } = req.params;
   try {
-    const totalSize = (await getFolderSize(resolvePath(idt, "/"))) || 0;
+    const totalSize = (await getFolderSize(resolvePath(idt as string, "/"))) || 0;
     res.json({ idt, total: totalSize });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -116,7 +116,7 @@ router.post("/fs/:idt/file/new", async (req: Request, res: Response) => {
   if (!filename) return res.status(400).json({ error: "filename is required" });
 
   try {
-    const filePath = resolvePath(idt, path.join(relPath, filename));
+    const filePath = resolvePath(idt as string, path.join(relPath, filename));
     await fsPromises.writeFile(filePath, content, "utf8");
     res.json({ message: "File created", location: filePath });
   } catch (err: any) {
@@ -134,7 +134,7 @@ router.post("/fs/:idt/folder/new", async (req: Request, res: Response) => {
   if (!filename) return res.status(400).json({ error: "filename is required" });
 
   try {
-    const folderPath = resolvePath(idt, path.join(relPath, filename));
+    const folderPath = resolvePath(idt as string, path.join(relPath, filename));
     await fsPromises.mkdir(folderPath, { recursive: true });
     res.json({ message: "Folder created", location: folderPath });
   } catch (err: any) {
@@ -152,7 +152,7 @@ router.get("/fs/:idt/file/content", async (req: Request, res: Response) => {
   if (!relPath) return res.status(400).json({ error: "location query param is required" });
 
   try {
-    const filePath = resolvePath(idt, relPath);
+    const filePath = resolvePath(idt as string, relPath);
     const content = await fsPromises.readFile(filePath, "utf8");
     return res.json({ content });
   } catch (err: any) {
@@ -170,7 +170,7 @@ router.delete("/fs/:idt/file/delete", async (req: Request, res: Response) => {
   if (!relPath) return res.status(400).json({ error: "location query param is required" });
 
   try {
-    const filePath = resolvePath(idt, relPath);
+    const filePath = resolvePath(idt as string, relPath);
     await fsPromises.unlink(filePath);
     res.json({ message: "File deleted", location: filePath });
   } catch (err: any) {
@@ -187,7 +187,7 @@ router.delete("/fs/:idt/folder/delete", async (req: Request, res: Response) => {
   if (!relPath) return res.status(400).json({ error: "location query param is required" });
 
   try {
-    const folderPath = resolvePath(idt, relPath);
+    const folderPath = resolvePath(idt as string, relPath);
     await fsPromises.rm(folderPath, { recursive: true, force: true });
     res.json({ message: "Folder deleted", location: folderPath });
   } catch (err: any) {
@@ -205,9 +205,9 @@ router.post("/fs/:idt/file/rename", async (req: Request, res: Response) => {
   if (!newName) return res.status(400).json({ error: "newName is required" });
 
   try {
-    const oldPath = resolvePath(idt, location);
+    const oldPath = resolvePath(idt as string, location);
     const dir = path.dirname(location);
-    const newPath = resolvePath(idt, path.join(dir, newName));
+    const newPath = resolvePath(idt as string, path.join(dir, newName));
 
     await fsPromises.rename(oldPath, newPath);
     res.json({ message: "File renamed", oldLocation: location, newLocation: path.join(dir, newName) });
@@ -227,9 +227,9 @@ router.post("/fs/:idt/folder/rename", async (req: Request, res: Response) => {
   if (!newName) return res.status(400).json({ error: "newName is required" });
 
   try {
-    const oldPath = resolvePath(idt, location);
+    const oldPath = resolvePath(idt as string, location);
     const dir = path.dirname(location);
-    const newPath = resolvePath(idt, path.join(dir, newName));
+    const newPath = resolvePath(idt as string, path.join(dir, newName));
 
     await fsPromises.rename(oldPath, newPath);
     res.json({ message: "Folder renamed", oldLocation: location, newLocation: path.join(dir, newName) });
@@ -250,7 +250,7 @@ router.post("/fs/:idt/file/upload", upload.single("file"), async (req: Request, 
   if (!file || !file.buffer) return res.status(400).json({ error: "No file uploaded" });
 
   try {
-    const uploadPath = resolvePath(idt, path.join(relPath, file.originalname));
+    const uploadPath = resolvePath(idt as string, path.join(relPath, file.originalname));
     await fsPromises.writeFile(uploadPath, file.buffer);
     res.json({ message: "File uploaded", location: uploadPath });
   } catch (err: any) {

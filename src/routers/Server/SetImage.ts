@@ -52,14 +52,14 @@ router.post('/:idt/set-image', async (req: Request, res: Response) => {
   }
 
   const data = loadData();
-  const server = data[idt];
+  const server = data[idt as string];
 
   if (!server) {
     return res.status(404).json({ error: 'Server not found' });
   }
 
   server.dockerimage = dockerImage;
-  data[idt] = server;
+  data[idt as string] = server;
 
   try {
     await saveData(data);

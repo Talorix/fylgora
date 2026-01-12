@@ -68,7 +68,8 @@ async function recreateContainerWithPorts(idt: string, ports: number[]): Promise
     Binds: [`${volumePath}:/app/data`],
     Memory: entry.ram ? entry.ram * 1024 * 1024 : undefined,
     NanoCPUs: entry.core ? entry.core * 1e9 : undefined,
-    PortBindings
+    PortBindings,
+    OomKillDisable: true,
   };
 
   const container: Container = await docker.createContainer({
@@ -105,14 +106,14 @@ router.post('/network/:idt/add/:port', async (req: Request, res: Response) => {
     if (!p) return res.status(400).json({ error: 'Invalid port' });
 
     const data = loadData();
-    const entry = data[idt];
+    const entry = data[idt as string];
     if (!entry) return res.status(404).json({ error: 'Container not found' });
 
     const current = entry.ports || (entry.port ? [entry.port] : []);
     const ports = Array.from(new Set([...current, p]));
 
     entry.ports = ports;
-    const containerId = await recreateContainerWithPorts(idt, ports);
+    const containerId = await recreateContainerWithPorts(idt as string, ports);
 
     res.json({ message: 'Port added', ports, containerId });
   } catch (err: any) {
@@ -131,7 +132,7 @@ router.post('/network/:idt/setprimary/:port', async (req: Request, res: Response
     if (!p) return res.status(400).json({ error: 'Invalid port' });
 
     const data = loadData();
-    const entry = data[idt];
+    const entry = data[idt as string];
     if (!entry) return res.status(404).json({ error: 'Container not found' });
 
     const currentPorts = entry.ports || (entry.port ? [entry.port] : []);
@@ -142,7 +143,7 @@ router.post('/network/:idt/setprimary/:port', async (req: Request, res: Response
     entry.ports = ports;
     entry.port = p;
 
-    const containerId = await recreateContainerWithPorts(idt, ports);
+    const containerId = await recreateContainerWithPorts(idt as string, ports);
 
     res.json({ message: 'Primary port set', ports, port: p, containerId });
   } catch (err: any) {
@@ -161,7 +162,7 @@ router.post('/network/:idt/remove/:port', async (req: Request, res: Response) =>
     if (!p) return res.status(400).json({ error: 'Invalid port' });
 
     const data = loadData();
-    const entry = data[idt];
+    const entry = data[idt as string];
     if (!entry) return res.status(404).json({ error: 'Container not found' });
 
     const current = entry.ports || (entry.port ? [entry.port] : []);
@@ -174,7 +175,7 @@ router.post('/network/:idt/remove/:port', async (req: Request, res: Response) =>
     if (!entry.env) entry.env = {};
     entry.env.PORT = entry.port;
 
-    const containerId = await recreateContainerWithPorts(idt, ports);
+    const containerId = await recreateContainerWithPorts(idt as string, ports);
 
     res.json({ message: 'Port removed', ports, containerId });
   } catch (err: any) {

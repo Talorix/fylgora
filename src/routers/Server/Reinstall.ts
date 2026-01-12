@@ -108,7 +108,8 @@ router.post('/reinstall/:idt', async (req: Request<any, any, { env?: EnvRecord }
     const hostConfig: any = {
       Binds: [`${volumePath}:/app/data`],
       Memory: existing.ram ? existing.ram * 1024 * 1024 : undefined,
-      NanoCPUs: existing.core ? existing.core * 1e9 : undefined
+      NanoCPUs: existing.core ? existing.core * 1e9 : undefined,
+      OomKillDisable: true,
     };
     const exposedPorts: Record<string, {}> = {};
     if (existing.port) {

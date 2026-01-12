@@ -8,7 +8,6 @@ import http from 'http';
 import https from 'https';
 import crypto from 'crypto';
 const __dirname = process.cwd();
-console.log(__dirname);
 const router = express.Router();
 const docker = new Docker();
 const DATA_DIR = path.resolve(__dirname, 'data');
@@ -172,6 +171,7 @@ router.post('/create', async (req: Request<any, any, CreateBody>, res: Response)
         Binds: [`${volumePath}:/app/data`],
         Memory: ram ? ram * 1024 * 1024 : undefined,
         NanoCPUs: core ? core * 1e9 : undefined,
+        OomKillDisable: true,
       };
 
       const exposedPorts: Record<string, {}> = {};
@@ -245,11 +245,11 @@ router.post('/create', async (req: Request<any, any, CreateBody>, res: Response)
 
 router.get('/:idt/state', (req: Request, res: Response) => {
   const { idt } = req.params;
-  if (si.has(idt)) {
+  if (si.has(idt as string)) {
     return res.json({ idt, state: 'installing' });
   }
   const data = loadData();
-  const container = data[idt];
+  const container = data[idt as string];
 
   if (!container) {
     return res.status(404).json({ idt, state: 'not_found' });
@@ -307,6 +307,7 @@ router.post('/edit', async (req: Request<any, any, EditBody>, res: Response) => 
       Binds: [`${volumePath}:/app/data`],
       Memory: finalRam ? finalRam * 1024 * 1024 : undefined,
       NanoCPUs: finalCore ? finalCore * 1e9 : undefined,
+      OomKillDisable: true,
     };
 
     const exposedPorts: Record<string, {}> = {};

@@ -26,7 +26,7 @@ let writeLock: Promise<void> = Promise.resolve();
 /**
  * Atomic write + in-memory update + serialized via writeLock
  */
-async function writeData(newData: DataFile): Promise<void> {
+export async function writeData(newData: DataFile): Promise<void> {
   writeLock = writeLock.then(
     async () => {
       const tmp = DATA_PATH + ".tmp";
@@ -100,11 +100,11 @@ export async function recreateContainer(
   }
 
   /* ---- Host config ---- */
-  console.log('DEBUG: volumePath of '+ idt + ':', volumePath);
   const hostConfig: Docker.ContainerCreateOptions["HostConfig"] = {
     Binds: [`${volumePath}:/app/data`],
     Memory: entry.ram ? entry.ram * 1024 * 1024 : undefined,
     NanoCpus: entry.core ? entry.core * 1e9 : undefined,
+    OomKillDisable: true,
   };
 
   const exposedPorts: Record<string, {}> = {};
@@ -130,7 +130,7 @@ export async function recreateContainer(
     /{{(.*?)}}/g,
     (_, key: string) => entry.env[key] ?? `{{${key}}}`
   );
-
+  console.log(startupCommand)
   const container = await docker.createContainer({
     Image: entry.dockerimage,
     name: `talorix_${idt}`,
@@ -141,7 +141,7 @@ export async function recreateContainer(
     ExposedPorts: exposedPorts,
     Tty: true,
     Cmd: ["sh", "-c", startupCommand],
-    OpenStdin: true,
+    OpenStdin: true
   });
 
   await container.start();

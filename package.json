@@ -1,12 +1,12 @@
 { 
-   "name": "Talon",
-   "version": "0.1-alpha.1",
+   "name": "Fylgora",
+   "version": "1.0.0-dev",
    "description": "A lightweight game server management panel node aka daemon.",
    "main": "dist/index.js",
    "author": "HydrenLabs",
    "license": "GNU AGPLv3",
    "scripts": {
-      "build": "tsc",
+      "build": "tsc -w",
       "start": "node dist/index.js",
       "dev": "ts-node src/index.ts",
       "configure": "node exec/configure.js"
@@ -17,15 +17,13 @@
       "@types/multer": "^2.0.0",
       "@types/node": "^25.0.3",
       "@types/ws": "^8.18.1",
-      "typescript": "^5.9.3",
-      "ws": "^8.19.0"
+      "typescript": "^5.9.3"
    },
    "dependencies": {
       "dockerode": "^4.0.9",
       "express": "^5.2.1",
       "ftp-srv": "^4.6.3",
       "ws": "^8.18.1",
-      "multer": "^2.0.2",
-      "typescript": "^5.9.3"
+      "multer": "^2.0.2"
    }
 }

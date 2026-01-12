@@ -17,7 +17,8 @@ import path from "path";
 import fs from "fs";
 import { promises as fsPromises } from "fs";
 import { pathToFileURL } from "url";
-import { readData, recreateContainer } from "./handlers/recreateContainer.js";
+import { readData, recreateContainer, writeData } from "./handlers/recreateContainer.js";
+import { executeCommand as runCommand } from "./handlers/server/executeCommand.js";
 const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
 const docker = new Docker();
 
@@ -29,7 +30,7 @@ setTimeout(() => {
 const dataPath = path.join(process.cwd(), "data.json");
 if (os.platform() === "win32") {
   console.warn(
-    "⚠️ Talon may cause errors on Windows. Use a Linux host to run containers safely."
+    "⚠️ Fylgora may cause errors on Windows. Use a Linux host to run containers safely."
   );
 }
 
@@ -39,7 +40,7 @@ async function ensureDataFile(): Promise<string> {
     await fsPromises.access(dataPath);
     return "File exists";
   } catch (err) {
-    await fsPromises.writeFile(dataPath, JSON.stringify({}, null, 2), "utf8");
+    await writeData({});
     return "File created";
   }
 }
@@ -74,7 +75,7 @@ setInterval(async () => {
   } catch (err) {
     console.error("reloadData error:", err);
   }
-}, 5000);
+}, 1000);
 
 const app = express();
 app.use(express.json());
@@ -99,10 +100,10 @@ function ansi(tag: string, color: keyof typeof ANSI, message: string) {
 // '^X' -> single control character (charCode & 0x1F). Leaves other text intact.
 function decodeControlSequences(s: string | undefined | null): string | undefined {
   if (typeof s !== "string") {
-     return undefined; 
+    return undefined;
   }
   if (s.length === 0) {
-     return s;
+    return s;
   }
   let out = "";
   for (let i = 0; i < s.length; i++) {
@@ -134,7 +135,8 @@ async function isDockerRunning(): Promise<boolean> {
 /* Verify that the external panel URL is reachable; exit if not. */
 async function isPanelRunning(panelUrl: string): Promise<boolean> {
   try {
-    await fetch(panelUrl, { method: "GET", // timeout not standard on fetch; keep minimal
+    await fetch(panelUrl, {
+      method: "GET", // timeout not standard on fetch; keep minimal
     });
     return true;
   } catch (err) {
@@ -205,11 +207,6 @@ async function getFolderSize(dir: string): Promise<number> {
 /* Resolve a data.json entry either by full/partial container ID or by idt key. */
 function findDataEntryByContainerOridt(containerOridt: string): { idt: string; entry: DataEntry } | null {
   if (!data) return null;
-  const found = Object.entries(data).find(([key, entry]) =>
-    entry.containerId && (entry.containerId === containerOridt || entry.containerId.startsWith(containerOridt))
-  );
-
-  if (found) return { idt: found[0], entry: found[1] };
   if (data[containerOridt]) return { idt: containerOridt, entry: data[containerOridt] };
   return null;
 }
@@ -290,7 +287,7 @@ function cleanupLogStreamsByKey(key: string) {
   if (entry) {
     entry.refCount--;
     if (entry.refCount <= 0) {
-      try { entry.stream.destroy(); } catch (e) {}
+      try { entry.stream.destroy(); } catch (e) { }
       logStreams.delete(key);
     }
     return;
@@ -303,7 +300,7 @@ function cleanupLogStreamsByKey(key: string) {
     if (e2) {
       e2.refCount--;
       if (e2.refCount <= 0) {
-        try { e2.stream.destroy(); } catch (e) {}
+        try { e2.stream.destroy(); } catch (e) { }
         logStreams.delete(cid || "");
       }
     }
@@ -488,44 +485,37 @@ async function executeCommand(ws: WebSocket, container: any, command: string, re
     const resolved = findDataEntryByContainerOridt(requestedContainerId);
     const idt = resolved ? resolved.idt : requestedContainerId;
     const currentContainerId = resolved ? resolved.entry.containerId : requestedContainerId;
-    if (!currentContainerId) return sendEvent(ws, "error", "Container ID not found");
+    if (!currentContainerId) {
+      console.error("Error: Container ID missing");
+      return sendEvent(ws, "error", "Container ID not found");
+    } 
     container = docker.getContainer(currentContainerId);
-
-    const usage = await getContainerDiskUsage(idt);
+    const [info, usage] = await Promise.all([
+      container.inspect().catch(() => null),
+      getContainerDiskUsage(idt)
+    ]);
     const allowed = resolved && resolved.entry && typeof resolved.entry.disk === "number" ? resolved.entry.disk : Infinity;
-
     console.log(`[disk-check] exec for ${currentContainerId} (idt=${idt}): usage=${usage.toFixed(3)}GB allowed=${allowed === Infinity ? "∞" : allowed}`);
-
-    const info = await container.inspect().catch(() => null);
+    if (!info || !info.State || !info.State.Running) {
+      console.log('DEBUG: Container is NOT running. Cannot attach.');
+      return sendEvent(ws, "error", "Container is not running");
+    }
     if (usage >= allowed) {
-      if (info && info.State && info.State.Running) {
-        try { await container.kill(); } catch (e) { /* ignore */ }
-      }
+      try { await container.kill(); } catch (e) { /* ignore */ }
       broadcastToContainer(idt, "power", ansi("Node", "red", "Server disk exceed — commands blocked."));
       return;
     }
-
-    const stream = await container.attach({ stream: true, stdin: true, stdout: true, stderr: true, hijack: true });
-    stream.on("data", (chunk: Buffer) => sendEvent(ws, "cmd", chunk.toString("utf8")));
-    stream.on("error", (err: any) => sendEvent(ws, "error", `Exec stream error: ${err.message}`));
-
-    if (command === '^C') {
-      await container.kill();
-      stream.end();
-    } else {
-      stream.write(command + "\n");
-      stream.end();
-    }
+    runCommand(container, command);
   } catch (err: any) {
+    console.error(`[EXEC ERROR] Failed to exec command:`, err);
     sendEvent(ws, "error", `Failed to exec command: ${err.message}`);
   }
 }
-
 /*
  * Perform power actions (start/restart/stop) for a container. Handles disk quota checks and
  * recreating the container when starting/restarting.
  */
-async function performPower(ws: WebSocket, container: any, action: "start" | "restart" | "stop", requestedContainerId: string) {
+async function performPower(ws: WebSocket, container: any, action: "start" | "restart" | "stop" | "kill", requestedContainerId: string) {
   try {
     const resolved = findDataEntryByContainerOridt(requestedContainerId);
     const idt = resolved ? resolved.idt : requestedContainerId;
@@ -546,7 +536,14 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
       broadcastToContainer(idt, "power", ansi("Node", "red", "Server disk exceed — container will not be started."));
       return;
     }
-
+    if (action === "kill") {
+      if (!info?.State?.Running) {
+        return sendEvent(ws, "power", ansi("Node", "red", "Container already stopped."));
+      }
+      await container.kill();
+      broadcastToContainer(idt, "power", ansi("Node", "red", "Container killed."));
+      return;
+    }
     if (action === "start" || action === "restart") {
       broadcastToContainer(idt, "power", ansi("Node", "yellow", "Pulling the latest docker image..."));
 
@@ -556,7 +553,7 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
       }
 
       const newContainer = await recreateContainer(idt, (logMessage: string) => {
-         broadcastToContainer(idt, 'docker-log', logMessage);
+        broadcastToContainer(idt, 'docker-log', logMessage);
       });
 
       for (const c of clients.get(idt) || []) {
@@ -573,6 +570,9 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
         return sendEvent(ws, "power", ansi("Node", "red", "Container already stopped."));
       }
       const stopCommand = (entry.stopCmd || "").replace(/{{(.*?)}}/g, (_, key: string) => entry.env?.[key] ?? `{{${key}}}`);
+      if (stopCommand === "^C") {
+        return await container.kill();
+      }
       await container.attach({ stream: true, stdin: true, stdout: true, stderr: true, hijack: true }, (err: any, stream: any) => {
         if (err) return sendEvent(ws, "error", `Failed to attach for stop: ${err.message}`);
         try {
@@ -594,43 +594,6 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
     sendEvent(ws, "error", `Power action failed: ${err.message}`);
   }
 }
-
-/*
- * Wait for a container to reach the running state (polling). Once running, attach logs for connected clients.
- */
-async function waitForRunning(container: any, ws?: WebSocket) {
-  const resolved = findDataEntryByContainerOridt(container.id);
-  const idt = resolved ? resolved.idt : container.id;
-
-  let info: any;
-  try {
-    for (let attempts = 0; attempts < 20; attempts++) {
-      try {
-        info = await container.inspect();
-        if (info.State && info.State.Running) break;
-      } catch (err: any) {
-        console.error("waitForRunning inspect failed:", err.message);
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-
-    if (!info || !info.State.Running) {
-      broadcastToContainer(idt, "error", "Container failed to reach running state.");
-      return;
-    }
-
-    for (const c of clients.get(idt) || []) {
-      try {
-        void streamLogs(c, container, container.id);
-      } catch (err) {
-        console.error("Failed to stream logs:", err);
-      }
-    }
-  } catch (err) {
-    console.error("waitForRunning fatal error:", err);
-  }
-}
-
 /* WebSocket authentication timeout and connection handling. */
 const AUTH_TIMEOUT = 5000;
 
@@ -689,6 +652,7 @@ wss.on("connection", (ws: WebSocket) => {
         case "power:start":
         case "power:stop":
         case "power:restart":
+        case "power:kill":
           await performPower(ws, container, event.split(":")[1] as any, providedContainerId);
           break;
         default:
@@ -739,7 +703,6 @@ app.get("/stats", (req: Request, res: Response) => {
     const cpus = os.cpus();
     const load = os.loadavg();
     const uptime = os.uptime();
-
     res.json({
       stats: {
         totalRamGB: (totalRam / 1e9).toFixed(2),
@@ -747,6 +710,7 @@ app.get("/stats", (req: Request, res: Response) => {
         totalCpuCores: cpus.length,
         cpuModel: cpus[0]?.model || "unknown",
         cpuSpeed: cpus[0]?.speed || "unknown",
+        // cpuUsagePercent,
         osType: os.type(),
         osPlatform: os.platform(),
         osArch: os.arch(),
@@ -762,25 +726,22 @@ app.get("/stats", (req: Request, res: Response) => {
   }
 });
 
-/* Fetch and print the CLI/banner version from a remote JSON file. */
 async function getVersion() {
   try {
-    // @ts-ignore - rely on global fetch
-    const res = await fetch("https://ma4z.is-a.dev/repo/version_library.json");
-    const json = (await res.json()) as Record<string, any>;
-    const version =
-      json?.["hydren:sr"]?.["talorix"]?.["daemon"] ?? "unknown";
+    const version = '1.0.0-dev'
     const ascii = `
- _____     _             
-|_   _|_ _| | ___  _ __  
-  | |/ _` + "`" + ` | |/ _ \| '_ \ 
-  | | (_| | | (_) | | | |   ${version}
-  |_|\`,__|_|\___/|_| |_|\n
-Copyright © %s Talon Project
+   ____     __                  
+  / __/_ __/ /__ ____  _______ _
+ / _// // / / _ \`/ _ \\/ __/ _ \`    ${version}
+/_/  \\_, /_/\\_, /\\___/_/  \\_,_/ 
+    /___/  /___/                 
 
-Website:  https://taloix.io
-Source:   https://github.com/talorix/talon
+Copyright © %s ma4z and contributors
+
+Website:  https://talorix.io
+Source:   https://github.com/talorix/fylgora
 `;
+
     const gray = '\x1b[90m';
     const reset = '\x1b[0m';
     const asciiWithColor = ascii.replace(version, reset + version + gray);
@@ -793,6 +754,6 @@ Source:   https://github.com/talorix/talon
 /* Start the HTTP server after printing version/banner. */
 async function start() {
   await getVersion();
-  server.listen((config as any).port, () => console.log("\x1b[32mTalon has been booted on " + (config as any).port));
+  server.listen((config as any).port, () => console.log("\x1b[32mFylgora has been booted on " + (config as any).port));
 }
 void start();

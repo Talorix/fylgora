@@ -52,12 +52,12 @@ router.delete('/delete/:idt', async (req: Request, res: Response) => {
   try {
     const { idt } = req.params;
     const data = await loadData();
-
-    const entry = data[idt];
+    const talar = String(idt);
+    const entry = data[talar];
     if (!entry) return res.status(404).json({ error: 'Unknown ID' });
 
     // Delete container folder
-    await deleteServerData(idt);
+    await deleteServerData(talar);
 
     if (entry.containerId) {
       const container: Container = docker.getContainer(entry.containerId);
@@ -81,7 +81,7 @@ router.delete('/delete/:idt', async (req: Request, res: Response) => {
     }
 
     // Remove from data.json
-    delete data[idt];
+    delete data[talar];
     await saveData(data);
 
     res.json({ status: 'ok', idt });
