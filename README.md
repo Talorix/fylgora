@@ -3,6 +3,7 @@
 **Node (daemon) for lightweight game server management by Talorix**
 
 ---
+if you are switching from talon to fylgora please check [Note4TalonUsers.md](https://github.com/Talorix/fylgora/blob/main/Note4TalonUsers.md)
 
 ## Prerequisites
 
