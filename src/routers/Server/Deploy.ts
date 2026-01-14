@@ -156,7 +156,9 @@ router.post('/create', async (req: Request<any, any, CreateBody>, res: Response)
       const containerEnv: Record<string, string> = {
         ...(Object.fromEntries(Object.entries(env || {}).map(([k, v]) => [k, v === undefined ? undefined : String(v)])) as Record<string, string>),
         MEMORY: ram ? `${ram}M` : '',
-        TID: idt,
+        DISK: disk,
+        CORES: core,
+        IDT: idt,
         PORT: typeof port !== 'undefined' ? String(port) : ''
       };
 
