@@ -155,11 +155,11 @@ router.post('/create', async (req: Request<any, any, CreateBody>, res: Response)
 
       const containerEnv: Record<string, string> = {
         ...(Object.fromEntries(Object.entries(env || {}).map(([k, v]) => [k, v === undefined ? undefined : String(v)])) as Record<string, string>),
-        MEMORY: ram ? `${ram}M` : '',
-        DISK: disk,
-        CORES: core,
+        MEMORY: ram ? `${ram}` : '',
+        PORT: typeof port !== 'undefined' ? String(port) : '',
+        DISK: disk as any,
+        CORES: core as any,
         IDT: idt,
-        PORT: typeof port !== 'undefined' ? String(port) : ''
       };
 
       for (const file of files) {
@@ -294,7 +294,7 @@ router.post('/edit', async (req: Request<any, any, EditBody>, res: Response) => 
       ...(Object.fromEntries(Object.entries(newEnv || {}).map(([k, v]) => [k, v === undefined ? undefined : String(v)])) as Record<string, string>)
     };
 
-    if (finalRam) mergedEnv.MEMORY = `${finalRam}M`;
+    if (finalRam) mergedEnv.MEMORY = `${finalRam}`;
     mergedEnv.TID = idt;
     if (finalPort) mergedEnv.PORT = String(finalPort);
 
