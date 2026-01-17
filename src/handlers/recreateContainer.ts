@@ -130,7 +130,6 @@ export async function recreateContainer(
     /{{(.*?)}}/g,
     (_, key: string) => entry.env[key] ?? `{{${key}}}`
   );
-  console.log(startupCommand)
   const container = await docker.createContainer({
     Image: entry.dockerimage,
     name: `talorix_${idt}`,
