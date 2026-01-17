@@ -16,6 +16,7 @@ interface ContainerEntry {
   containerId?: string;
   dockerimage: string;
   env?: Record<string, string | number>;
+  startCmd?: string;
   ram?: number;
   core?: number;
   ports?: number[];
@@ -51,9 +52,9 @@ async function recreateContainerWithPorts(idt: string, ports: number[]): Promise
   if (entry.containerId) {
     try {
       const old = docker.getContainer(entry.containerId);
-      await old.stop().catch(() => {});
-      await old.remove({ force: true }).catch(() => {});
-    } catch {}
+      await old.stop().catch(() => { });
+      await old.remove({ force: true }).catch(() => { });
+    } catch { }
   }
 
   const ExposedPorts: Record<string, {}> = {};
@@ -71,14 +72,19 @@ async function recreateContainerWithPorts(idt: string, ports: number[]): Promise
     PortBindings,
     OomKillDisable: true,
   };
-
+  const startupCommand = entry.startCmd?.replace(/{{(.*?)}}/g, (_, key: string) => {
+    return String(entry.env?.[key] ?? `{{${key}}}`);
+  });
   const container: Container = await docker.createContainer({
     Image: entry.dockerimage,
     name: `talorix_${idt}`,
-    Env: objectToEnv(entry.env),
+    Env: Object.entries(entry.env || {}).map(
+      ([k, v]) => `${k}=${v}`
+    ),
     HostConfig,
     ExposedPorts,
     Tty: true,
+    Cmd: ["sh", "-c", startupCommand],
     OpenStdin: true
   } as ContainerCreateOptions);
 
