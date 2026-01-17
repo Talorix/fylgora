@@ -36,6 +36,106 @@ function resolvePath(idt: string, relPath: string): string {
 }
 
 /**
+ * Convert numeric mode to rwxrwxrwx string
+ * @param mode - fs.Stats.mode
+ */
+function modeToString(mode: number) {
+  const perms = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx'];
+  const owner = (mode >> 6) & 0o7;
+  const group = (mode >> 3) & 0o7;
+  const others = mode & 0o7;
+  return perms[owner] + perms[group] + perms[others];
+}
+
+/**
+ * Read a Minecraft server.properties file and return an array of entries
+ * Each entry is either a property ({ key, value }) or a comment ({ comment })
+ */
+export async function separateServerProperties(pathToServerProperties: string) {
+  try {
+    const content = await fsPromises.readFile(pathToServerProperties, 'utf-8');
+    
+    const result: Array<{ key: string; value: string | boolean | number } | { comment: string }> = [];
+
+    content.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        // preserve empty lines
+        result.push({ comment: '' });
+        return;
+      }
+
+      if (trimmed.startsWith('#')) {
+        result.push({ comment: trimmed });
+        return;
+      }
+
+      const [rawKey, rawValue] = trimmed.split('=');
+      if (!rawKey) return;
+
+      let value: string | boolean | number = rawValue.trim();
+
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (!isNaN(Number(value))) value = Number(value);
+
+      result.push({ key: rawKey.trim(), value });
+    });
+
+    return result;
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * Save an array of server properties (with comments) back to server.properties
+ * @param pathToServerProperties - Path to file
+ * @param properties - Array returned from separateServerProperties
+ */
+export async function saveServerProperties(pathToServerProperties: string, properties: Array<{ key: string; value: string | boolean | number } | { comment: string }>) {
+  try {
+    const content = properties
+      .map(entry => {
+        if ('comment' in entry) return entry.comment;
+        return `${entry.key}=${entry.value}`;
+      })
+      .join('\n');
+
+    await fsPromises.writeFile(pathToServerProperties, content, 'utf-8');
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+/**
+ * Get detailed file information
+ * @param filePath - Path to the file
+ */
+async function getFileProperties(filePath: string) {
+  try {
+    const stats = await fsPromises.stat(filePath);
+    return {
+      name: path.basename(filePath),
+      path: path.resolve(filePath),
+      size: stats.size,
+      type: stats.isDirectory() ? "folder" : "file",
+      isSymbolicLink: stats.isSymbolicLink(),
+      isFIFO: stats.isFIFO(),
+      isSocket: stats.isSocket(),
+      createdAt: stats.birthtime,
+      modifiedAt: stats.mtime,
+      accessedAt: stats.atime,
+      mode: modeToString(stats.mode),
+      extension: path.extname(filePath),
+    };
+  } catch (err) {
+    console.error(`Error reading file properties: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+/**
  * Recursively compute folder size
  */
 async function getFolderSize(folderPath: string): Promise<number> {
@@ -54,6 +154,46 @@ async function getFolderSize(folderPath: string): Promise<number> {
 }
 
 /**
+ * Get Minecraft server.properties
+ * Returns array of { key, value } and comments
+ */
+router.get("/fs/feature/:idt/properties", async (req: Request, res: Response) => {
+  const { idt } = req.params;
+  const relPath = req.query.path as string || "server.properties"; // default file
+
+  try {
+    const filePath = resolvePath(idt as any, relPath);
+    const props = await separateServerProperties(filePath);
+    res.json({ properties: props });
+  } catch (err: any) {
+    res.status(500).json({ properties: [], error: err.message });
+  }
+});
+
+/**
+ * Save Minecraft server.properties
+ * Expects body: { properties: Array<{ key, value } | { comment }> }
+ */
+router.post("/fs/feature/:idt/properties", async (req: Request, res: Response) => {
+  const { idt } = req.params;
+  const relPath = req.query.path as string || "server.properties"; // default file
+  const properties = req.body.properties;
+
+  if (!Array.isArray(properties)) {
+    return res.status(400).json({ error: "properties array is required" });
+  }
+
+  try {
+    const filePath = resolvePath(idt as any, relPath);
+    const success = await saveServerProperties(filePath, properties);
+    if (success) res.json({ message: "server.properties saved successfully!" });
+    else res.status(500).json({ error: "Failed to save server.properties" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * List files/folders in a container directory
  */
 router.get("/fs/:idt/files", async (req: Request, res: Response) => {
@@ -67,23 +207,11 @@ router.get("/fs/:idt/files", async (req: Request, res: Response) => {
     const result = await Promise.all(
       items.map(async (item) => {
         const itemPath = path.join(dirPath, item.name);
-        let size: number | null = null;
-        if (item.isFile()) {
-          const stats = await fsPromises.stat(itemPath);
-          size = stats.size;
-        } else if (item.isDirectory()) {
-          size = await getFolderSize(itemPath);
+        try {
+          return getFileProperties(itemPath);
+        } catch {
+          return { name: item.name, error: "Could not read properties" };
         }
-
-        const stats = await fsPromises.stat(itemPath);
-
-        return {
-          name: item.name,
-          type: item.isDirectory() ? "folder" : "file",
-          createdAt: stats.birthtime,
-          size,
-          extension: item.isFile() ? path.extname(item.name) : null,
-        };
       })
     );
 
