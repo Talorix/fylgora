@@ -295,7 +295,7 @@ router.post('/edit', async (req: Request<any, any, EditBody>, res: Response) => 
     };
 
     if (finalRam) mergedEnv.MEMORY = `${finalRam}`;
-    mergedEnv.TID = idt;
+    mergedEnv.IDT = idt;
     if (finalPort) mergedEnv.PORT = String(finalPort);
 
     for (const file of newFiles) {
