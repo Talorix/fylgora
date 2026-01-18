@@ -60,7 +60,6 @@ export async function separateServerProperties(pathToServerProperties: string) {
     content.split(/\r?\n/).forEach(line => {
       const trimmed = line.trim();
       if (!trimmed) {
-        // preserve empty lines
         result.push({ comment: '' });
         return;
       }
@@ -73,11 +72,11 @@ export async function separateServerProperties(pathToServerProperties: string) {
       const [rawKey, rawValue] = trimmed.split('=');
       if (!rawKey) return;
 
-      let value: string | boolean | number = rawValue.trim();
+      let value: string | boolean | number = rawValue?.trim() ?? '';
 
       if (value === 'true') value = true;
       else if (value === 'false') value = false;
-      else if (!isNaN(Number(value))) value = Number(value);
+      else if (value !== '' && !isNaN(Number(value))) value = Number(value);
 
       result.push({ key: rawKey.trim(), value });
     });
@@ -87,7 +86,6 @@ export async function separateServerProperties(pathToServerProperties: string) {
     return [];
   }
 }
-
 /**
  * Save an array of server properties (with comments) back to server.properties
  * @param pathToServerProperties - Path to file
