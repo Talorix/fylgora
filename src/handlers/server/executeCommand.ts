@@ -9,16 +9,8 @@ export const executeCommand = async (container: Docker.Container, command: strin
             stderr: true,
             hijack: true
         });
-
         stream.write(`${command}\n`);
-
-        stream.on('error', (error: Error) => {
-            console.error(`Stream error:`, error);
-        });
-
-        stream.on('end', () => {
-            console.debug(`Command stream ended.`);
-        });
+        stream.end();
     } catch (error) {
         console.error(`Failed to send command:`, error);
     }
