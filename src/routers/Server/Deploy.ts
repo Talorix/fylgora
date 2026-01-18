@@ -252,11 +252,18 @@ router.get('/:idt/state', (req: Request, res: Response) => {
   }
   const data = loadData();
   const container = data[idt as string];
-
   if (!container) {
     return res.status(404).json({ idt, state: 'not_found' });
   }
-  res.json({ idt, state: container.status });
+  const response: any = { 
+    idt, 
+    state: container.status 
+  };
+  if (container.status === 'failed') {
+    response.error = container.error || 'Unknown error occurred';
+  }
+
+  res.json(response);
 });
 
 router.post('/edit', async (req: Request<any, any, EditBody>, res: Response) => {
