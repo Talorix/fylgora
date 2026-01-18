@@ -6,8 +6,8 @@ import path from 'path';
 
 const router = express.Router();
 const __dirname = process.cwd();
-
-const DATA_DIR = path.resolve(__dirname, 'data');
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+const DATA_DIR = path.resolve(__dirname, config.servers.folder);
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 // Ensure the data directory exists

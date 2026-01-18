@@ -9,8 +9,9 @@ import https from 'https';
 import crypto from 'crypto';
 const __dirname = process.cwd();
 const router = express.Router();
-const docker = new Docker();
-const DATA_DIR = path.resolve(__dirname, 'data');
+const docker = new Docker({ socketPath: process.env.dockerSocket });
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+const DATA_DIR = path.resolve(__dirname, config.servers.folder);
 const DATA_FILE = path.join(__dirname, 'data.json');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -193,10 +194,12 @@ router.post('/create', async (req: Request<any, any, CreateBody>, res: Response)
       });
 
       const startupCommand = (startCmd ?? '').replace(/{{(.*?)}}/g, (_, key) => containerEnv[key] ?? `{{${key}}}`);
-
+      const containerName = config.servers.default_container_name
+        .replace('{idt}', idt)
+        .replace('{port}', port)
       const container = await docker.createContainer({
         Image: dockerimage,
-        name: `talorix_${idt}`,
+        name: containerName,
         Env: objectToEnv(containerEnv),
         HostConfig: hostConfig,
         ExposedPorts: exposedPorts,
@@ -343,9 +346,12 @@ router.post('/edit', async (req: Request<any, any, EditBody>, res: Response) => 
     }
 
     const startupCommand = (existing.startCmd ?? '').replace(/{{(.*?)}}/g, (_, key) => mergedEnv[key] ?? `{{${key}}}`);
+    const containerName = config.servers.default_container_name
+        .replace('{idt}', idt)
+        .replace('{port}', finalPort)
     const container = await docker.createContainer({
       Image: finalDockerImage,
-      name: `talorix_${idt}`,
+      name: containerName,
       Env: objectToEnv(mergedEnv),
       HostConfig: hostConfig,
       ExposedPorts: exposedPorts,

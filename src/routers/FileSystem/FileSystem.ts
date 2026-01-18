@@ -18,9 +18,11 @@ type RequestWithFile = Request & { file?: MulterFile };
 import { promises as fsPromises } from "fs";
 import path from "path";
 import multer from "multer";
+import fs from "fs";
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
 const __dirname = process.cwd();
 const router = express.Router();
-const DATA_DIR = path.resolve(__dirname, "data");
+const DATA_DIR = path.resolve(__dirname, config.servers.folder);
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**

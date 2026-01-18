@@ -3,9 +3,8 @@ import path from 'path';
 import FtpSrv from "ftp-srv";
 const __dirname = process.cwd();
 const DATA_PATH = path.join(__dirname, 'data.json');
-const CONFIG_PATH = path.join(__dirname, 'config.json');
-const SERVERS_DIR = path.join(__dirname, 'data');
-const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) as { ftpport: number };
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+const SERVERS_DIR = path.join(__dirname, config.servers.folder);
 const FTP_PORT = config.ftpport;
 const FTP_HOST = '0.0.0.0';
 /** The Brother of Brother of Sometimes works but sometimes shits on the bed aka server, leaving for later

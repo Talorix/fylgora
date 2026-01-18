@@ -9,8 +9,9 @@ import http from 'http';
 const __dirname = process.cwd();
 
 const router = express.Router();
-const docker = new Docker();
-const DATA_DIR = path.resolve(__dirname, 'data');
+const docker = new Docker({ socketPath: process.env.dockerSocket });
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+const DATA_DIR = path.resolve(__dirname, config.servers.folder);
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -125,9 +126,12 @@ router.post('/reinstall/:idt', async (req: Request<any, any, { env?: EnvRecord }
     });
 
     const startupCommand = existing.startCmd.replace(/{{(.*?)}}/g, (_, key) => String(mergedEnv[key] ?? `{{${key}}}`));
+    const containerName = config.servers.default_container_name
+        .replace('{idt}', idt)
+        .replace('{port}', existing.port)
     const container = await docker.createContainer({
       Image: existing.dockerimage,
-      name: `talorix_${idt}`,
+      name: containerName,
       Env: objectToEnv(mergedEnv),
       HostConfig: hostConfig,
       ExposedPorts: exposedPorts,

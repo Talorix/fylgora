@@ -1,8 +1,9 @@
 import path from "path";
 import { promises as fsPromises } from "fs";
 import Docker from "dockerode";
-
-const docker = new Docker();
+import fs from "fs";
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+const docker = new Docker({ socketPath: process.env.dockerSocket });
 const DATA_PATH = path.join(process.cwd(), "data.json");
 
 /* ---- Types ---- */
@@ -66,7 +67,7 @@ export async function recreateContainer(
   const entry = current[idt];
   if (!entry) throw new Error("Data entry not found");
   const __dirname = process.cwd();
-  const DATA_DIR = path.resolve(__dirname, "data");
+  const DATA_DIR = path.resolve(__dirname, config.servers.folder);
   const volumePath = path.join(DATA_DIR, idt);
 
   /* ---- Pull image ---- */
@@ -130,9 +131,12 @@ export async function recreateContainer(
     /{{(.*?)}}/g,
     (_, key: string) => entry.env[key] ?? `{{${key}}}`
   );
+  const containerName = config.servers.default_container_name
+        .replace('{idt}', idt)
+        .replace('{port}', ports[0])
   const container = await docker.createContainer({
     Image: entry.dockerimage,
-    name: `talorix_${idt}`,
+    name: containerName,
     Env: Object.entries(entry.env || {}).map(
       ([k, v]) => `${k}=${v}`
     ),

@@ -6,9 +6,10 @@ import Docker from "dockerode";
 import type { Container, ContainerCreateOptions } from "dockerode";
 const __dirname = process.cwd();
 const router = express.Router();
-const docker = new Docker();
-
+const docker = new Docker({ socketPath: process.env.dockerSocket });
 const DATA_FILE = path.join(__dirname, 'data.json');
+import fs1 from "fs";
+const config = JSON.parse(fs1.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
 
 interface ContainerEntry {
   containerId?: string;
@@ -39,7 +40,7 @@ const saveData = async (data: DataFile): Promise<void> => {
 };
 
 async function deleteServerData(idt: string): Promise<void> {
-  const containerDataPath = path.join(__dirname, `data/${idt}`);
+  const containerDataPath = path.join(__dirname, `${config.servers.folder}/${idt}`);
   try {
     await fs.rm(containerDataPath, { recursive: true, force: true });
   } catch (err) {

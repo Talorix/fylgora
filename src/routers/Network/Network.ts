@@ -7,9 +7,9 @@ import Docker from "dockerode";
 import type { Container, ContainerCreateOptions } from "dockerode";
 const __dirname = process.cwd();
 const router = express.Router();
-const docker = new Docker();
-
-const DATA_DIR = path.resolve(__dirname, 'data');
+const docker = new Docker({ socketPath: process.env.dockerSocket });
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+const DATA_DIR = path.resolve(__dirname, config.servers.folder);
 const DATA_FILE = path.resolve(__dirname, 'data.json');
 
 interface ContainerEntry {
@@ -75,9 +75,12 @@ async function recreateContainerWithPorts(idt: string, ports: number[]): Promise
   const startupCommand = entry.startCmd?.replace(/{{(.*?)}}/g, (_, key: string) => {
     return String(entry.env?.[key] ?? `{{${key}}}`);
   });
+  const containerName = config.servers.default_container_name
+     .replace('{idt}', idt)
+     .replace('{port}', ports?.[0] ?? 'null');
   const container: Container = await docker.createContainer({
     Image: entry.dockerimage,
-    name: `talorix_${idt}`,
+    name: containerName,
     Env: Object.entries(entry.env || {}).map(
       ([k, v]) => `${k}=${v}`
     ),

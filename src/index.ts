@@ -1,26 +1,28 @@
 #!/usr/bin/env node
-
-/*
-  TypeScript conversion of the provided JavaScript daemon.
-  Notes:
-  - This file uses modern ES module imports. Ensure `tsconfig.json` enables `esModuleInterop` and `resolveJsonModule` if you import JSON directly.
-  - Some `any` types are used where the original code relies on external library runtime shapes (Docker streams, container objects, etc.). You can tighten these types later.
-*/
-
+import fs from "fs";
+import path from "path";
+const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
+process.env.dockerSocket = config.docker.socket;
 import express, { Request, Response, NextFunction } from "express";
 import http from "http";
 import WebSocket from "ws";
 import { WebSocketServer } from "ws";
 import Docker from "dockerode";
 import os from "os";
-import path from "path";
-import fs from "fs";
 import { promises as fsPromises } from "fs";
 import { pathToFileURL } from "url";
 import { readData, recreateContainer, writeData } from "./handlers/recreateContainer.js";
 import { executeCommand as runCommand } from "./handlers/server/executeCommand.js";
-const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"));
-const docker = new Docker();
+const docker = new Docker({ socketPath: process.env.dockerSocket });
+import { spawnSync } from "child_process";
+function isTarInstalled(): boolean {
+  try {
+    const res = spawnSync("tar", ["--version"], { stdio: "ignore" });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
+}
 
 /* Start FTP server shortly after startup to allow other initialization to complete. */
 setTimeout(() => {
@@ -28,10 +30,9 @@ setTimeout(() => {
 }, 1000);
 
 const dataPath = path.join(process.cwd(), "data.json");
-if (os.platform() === "win32") {
-  console.warn(
-    "⚠️ Fylgora may cause errors on Windows. Use a Linux host to run containers safely."
-  );
+
+if (!isTarInstalled()) {
+  throw new Error("tar is not installed on this system, please install tar to run fylgora");
 }
 
 /* Ensure the data.json file exists; create an empty object file if missing. */
@@ -216,7 +217,7 @@ async function getContainerDiskUsage(containerIdOridt: string): Promise<number> 
   const resolved = findDataEntryByContainerOridt(containerIdOridt);
   if (!resolved) return 0;
   const { idt } = resolved;
-  const dir = path.join(__dirname, "data", idt);
+  const dir = path.join(__dirname, config.servers.folder, idt);
   const bytes = await getFolderSize(dir);
   return bytes / 1e9;
 }
@@ -334,9 +335,14 @@ function cleanupStatsByKey(key: string) {
 }
 
 /*
+ * Track last log timestamps and content per container to avoid duplicates
+ */
+const lastContainerLogs = new Map<string, { time: number; content: Set<string> }>();
+
+/*
  * Attach container logs and broadcast raw log chunks to all clients for the idt.
  * Performs disk quota check before attaching and handles reference counting so multiple
- * clients don't create duplicate streams.
+ * clients don't create duplicate streams. Includes deduplication logic.
  */
 async function streamLogs(ws: WebSocket, container: any, requestedContainerId: string) {
   const resolved = findDataEntryByContainerOridt(requestedContainerId);
@@ -362,13 +368,16 @@ async function streamLogs(ws: WebSocket, container: any, requestedContainerId: s
     return;
   }
 
-  // If there's already an active log stream for this container, increment refCount and return
   if (logStreams.has(currentContainerId)) {
     logStreams.get(currentContainerId)!.refCount++;
     return;
   }
+  
+  // Initialize deduplication tracking for this container
+  if (!lastContainerLogs.has(currentContainerId)) {
+    lastContainerLogs.set(currentContainerId, { time: 0, content: new Set<string>() });
+  }
 
-  // Attach to Docker logs and broadcast raw chunks to clients registered under idt
   container.logs({ follow: true, stdout: true, stderr: true, tail: 100 }, (err: any, stream: NodeJS.ReadableStream) => {
     if (err) return sendEvent(ws, "error", `Failed to attach logs: ${err.message || err}`);
 
@@ -379,6 +388,25 @@ async function streamLogs(ws: WebSocket, container: any, requestedContainerId: s
 
     const onData = (chunk: Buffer) => {
       const raw = chunk.toString("utf8");
+      const now = Date.now();
+      const logTracker = lastContainerLogs.get(currentContainerId)!;
+
+      // Check if enough time has passed since last log (800ms threshold)
+      if (now - logTracker.time < 800) {
+        // Within time window - check if this is a duplicate
+        if (logTracker.content.has(raw)) {
+          return; // Skip duplicate log
+        }
+      } else {
+        // Time window passed - clear the set for fresh tracking
+        logTracker.content.clear();
+      }
+
+      // Update tracker
+      logTracker.time = now;
+      logTracker.content.add(raw);
+
+      // Broadcast to clients
       const set = clients.get(idt) || new Set<WebSocket>();
       for (const client of set) {
         if ((client as any).readyState === WebSocket.OPEN) {
@@ -394,6 +422,10 @@ async function streamLogs(ws: WebSocket, container: any, requestedContainerId: s
     stream.on("end", () => {
       broadcastToContainer(idt, "power", ansi("Node", "gray", "Log stream ended."));
       if (logStreams.has(currentContainerId)) logStreams.delete(currentContainerId);
+      // Clean up deduplication tracker
+      if (lastContainerLogs.has(currentContainerId)) {
+        lastContainerLogs.delete(currentContainerId);
+      }
     });
 
     if (!logStreams.get(currentContainerId)!.stopped) logStreams.get(currentContainerId)!.stopped = true;
@@ -488,7 +520,7 @@ async function executeCommand(ws: WebSocket, container: any, command: string, re
     if (!currentContainerId) {
       console.error("Error: Container ID missing");
       return sendEvent(ws, "error", "Container ID not found");
-    } 
+    }
     container = docker.getContainer(currentContainerId);
     const [info, usage] = await Promise.all([
       container.inspect().catch(() => null),
