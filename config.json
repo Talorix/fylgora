@@ -9,8 +9,8 @@
     "socket": "/var/run/docker.sock"
   },
   "filesystem": {
-    "note_3": "tar_gz only avaliable",
-    "archive_format": "tar_gz",
+    "note_3": "zip only avaliable",
+    "archive_format": ".zip",
     "archives_folder": "archives"
   },
   "servers": {

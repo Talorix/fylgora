@@ -372,7 +372,7 @@ async function streamLogs(ws: WebSocket, container: any, requestedContainerId: s
     logStreams.get(currentContainerId)!.refCount++;
     return;
   }
-  
+
   // Initialize deduplication tracking for this container
   if (!lastContainerLogs.has(currentContainerId)) {
     lastContainerLogs.set(currentContainerId, { time: 0, content: new Set<string>() });
@@ -561,9 +561,7 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
 
     const usage = await getContainerDiskUsage(idt);
     const allowed = entry?.disk ?? Infinity;
-
     const info = await container.inspect().catch(() => null);
-
     if ((action === "start" || action === "restart") && usage >= allowed) {
       broadcastToContainer(idt, "power", ansi("Node", "red", "Server disk exceed — container will not be started."));
       return;
@@ -583,15 +581,12 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
         cleanupLogStreamsByContainerId(currentContainerId);
         cleanupStatsByContainerId(currentContainerId);
       }
-
       const newContainer = await recreateContainer(idt, (logMessage: string) => {
         broadcastToContainer(idt, 'docker-log', logMessage);
       });
-
       for (const c of clients.get(idt) || []) {
         void streamLogs(c, newContainer, newContainer.id);
       }
-
       for (const c of clients.get(idt) || []) {
         void streamStats(c, newContainer, newContainer.id);
       }
@@ -603,7 +598,10 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
       }
       const stopCommand = (entry.stopCmd || "").replace(/{{(.*?)}}/g, (_, key: string) => entry.env?.[key] ?? `{{${key}}}`);
       if (stopCommand === "^C") {
-        return await container.kill();
+        await container.kill();
+        await container.wait();
+        await container.remove({ force: true });
+        return;
       }
       await container.attach({ stream: true, stdin: true, stdout: true, stderr: true, hijack: true }, (err: any, stream: any) => {
         if (err) return sendEvent(ws, "error", `Failed to attach for stop: ${err.message}`);
@@ -615,10 +613,11 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
             stream.write((entry.stopCmd || "") + "\n");
           }
         } catch (e) {
-          // Fallback to original behaviour on any failure
           stream.write((entry.stopCmd || "") + "\n");
         }
       });
+      await container.wait();
+      await container.remove({ force: true });
       broadcastToContainer(idt, "power", ansi("Node", "red", "Container Stopping."));
     }
   } catch (err: any) {
