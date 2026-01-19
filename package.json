@@ -14,23 +14,24 @@
     "bin": {
         "fylgora": "./exec/fylgora.js"
     },
-        "devDependencies": {
-            "@types/adm-zip": "^0.5.7",
-            "@types/archiver": "^7.0.0",
-            "@types/dockerode": "^3.3.47",
-            "@types/express": "^5.0.6",
-            "@types/multer": "^2.0.0",
-            "@types/node": "^25.0.3",
-            "@types/ws": "^8.18.1",
-            "typescript": "^5.9.3"
-        },
-        "dependencies": {
-            "adm-zip": "^0.5.16",
-            "archiver": "^7.0.1",
-            "dockerode": "^4.0.9",
-            "express": "^5.2.1",
-            "ftp-srv": "^4.6.3",
-            "multer": "^2.0.2",
-            "ws": "^8.18.1"
-        }
+    "devDependencies": {
+        "@types/adm-zip": "^0.5.7",
+        "@types/archiver": "^7.0.0",
+        "@types/dockerode": "^3.3.47",
+        "@types/express": "^5.0.6",
+        "@types/multer": "^2.0.0",
+        "@types/node": "^25.0.3",
+        "@types/ws": "^8.18.1",
+        "typescript": "^5.9.3"
+    },
+    "dependencies": {
+        "adm-zip": "^0.5.16",
+        "archiver": "^7.0.1",
+        "dockerode": "^4.0.9",
+        "express": "^5.2.1",
+        "ftp-srv": "^4.6.3",
+        "multer": "^2.0.2",
+        "node-pty": "^1.1.0",
+        "ws": "^8.18.1"
     }
+}
