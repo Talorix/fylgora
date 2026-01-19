@@ -599,8 +599,6 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
       const stopCommand = (entry.stopCmd || "").replace(/{{(.*?)}}/g, (_, key: string) => entry.env?.[key] ?? `{{${key}}}`);
       if (stopCommand === "^C") {
         await container.kill();
-        await container.wait();
-        await container.remove({ force: true });
         return;
       }
       await container.attach({ stream: true, stdin: true, stdout: true, stderr: true, hijack: true }, (err: any, stream: any) => {
@@ -616,8 +614,6 @@ async function performPower(ws: WebSocket, container: any, action: "start" | "re
           stream.write((entry.stopCmd || "") + "\n");
         }
       });
-      await container.wait();
-      await container.remove({ force: true });
       broadcastToContainer(idt, "power", ansi("Node", "red", "Container Stopping."));
     }
   } catch (err: any) {
